@@ -1,10 +1,11 @@
-module github.com/operator-framework/deppy
+module github.com/timflannagan/deppy
 
 go 1.18
 
 require (
 	github.com/onsi/ginkgo/v2 v2.1.4
 	github.com/onsi/gomega v1.19.0
+	github.com/operator-framework/deppy v0.0.0-20220603193008-ee5a06e86d13
 	k8s.io/apimachinery v0.22.1
 	k8s.io/client-go v0.22.1
 	sigs.k8s.io/controller-runtime v0.10.0
