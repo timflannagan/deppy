@@ -38,3 +38,23 @@ func (zeroVariable) Identifier() Identifier {
 func (zeroVariable) Constraints() []Constraint {
 	return nil
 }
+
+type GenericVariable struct {
+	ID    Identifier
+	Rules []Constraint
+}
+
+func (i GenericVariable) Identifier() Identifier {
+	return i.ID
+}
+
+func (i GenericVariable) Constraints() []Constraint {
+	return i.Rules
+}
+
+func NewVariable(id Identifier, constraints ...Constraint) Variable {
+	return GenericVariable{
+		ID:    id,
+		Rules: constraints,
+	}
+}

@@ -5,20 +5,20 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.8.0
   creationTimestamp: null
-  name: inputs.core.deppy.io
+  name: resolutions.core.deppy.io
 spec:
   group: core.deppy.io
   names:
-    kind: Input
-    listKind: InputList
-    plural: inputs
-    singular: input
+    kind: Resolution
+    listKind: ResolutionList
+    plural: resolutions
+    singular: resolution
   scope: Cluster
   versions:
   - name: v1alpha1
     schema:
       openAPIV3Schema:
-        description: Input is the Schema for the inputs API
+        description: Resolution is the Schema for the resolutions API
         properties:
           apiVersion:
             description: 'APIVersion defines the versioned schema of this representation
@@ -33,7 +33,7 @@ spec:
           metadata:
             type: object
           spec:
-            description: InputSpec defines the desired state of Input
+            description: ResolutionSpec defines the desired state of Resolution
             properties:
               constraints:
                 items:
@@ -47,25 +47,9 @@ spec:
                   - value
                   type: object
                 type: array
-              inputClassName:
-                type: string
-              properties:
-                items:
-                  properties:
-                    type:
-                      type: string
-                    value:
-                      x-kubernetes-preserve-unknown-fields: true
-                  required:
-                  - type
-                  - value
-                  type: object
-                type: array
-            required:
-            - inputClassName
             type: object
           status:
-            description: InputStatus defines the observed state of Input
+            description: ResolutionStatus defines the observed state of Resolution
             properties:
               conditions:
                 items:
@@ -138,6 +122,7 @@ spec:
               ids:
                 items:
                   type: string
+                nullable: true
                 type: array
             type: object
         type: object

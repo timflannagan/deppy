@@ -43,6 +43,7 @@ type Property struct {
 
 // InputStatus defines the observed state of Input
 type InputStatus struct {
+	IDs        []string           `json:"ids,omitempty"`
 	Conditions []metav1.Condition `json:"conditions,omitempty"`
 }
 

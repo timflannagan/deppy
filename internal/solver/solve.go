@@ -9,6 +9,7 @@ import (
 	"github.com/go-air/gini"
 	"github.com/go-air/gini/inter"
 	"github.com/go-air/gini/z"
+	"github.com/sirupsen/logrus"
 )
 
 var ErrIncomplete = errors.New("cancelled before a solution could be found")
@@ -78,20 +79,26 @@ func (s *solver) Solve(ctx context.Context) (result []Variable, err error) {
 	outcome, _ := s.g.Test(nil)
 	if outcome != satisfiable && outcome != unsatisfiable {
 		// searcher for solutions in input order, so that preferences
-		// can be taken into acount (i.e. prefer one catalog to another)
-		outcome, assumptions, aset = (&search{s: s.g, lits: s.litMap, tracer: s.tracer}).Do(context.Background(), assumptions)
+		// can be taken into account (i.e. prefer one catalog to another)
+		outcome, assumptions, aset = (&search{s: s.g, lits: s.litMap, tracer: s.tracer}).Do(ctx, assumptions)
 	}
+
 	switch outcome {
 	case satisfiable:
 		s.buffer = s.litMap.Lits(s.buffer)
 		var extras, excluded []z.Lit
 		for _, m := range s.buffer {
+			logrus.Infof("processing the %v (%v) variable: %v", m, s.litMap.VariableOf(m), s.g.Value(m))
 			if _, ok := aset[m]; ok {
 				continue
 			}
+			// check if the solved literal value is false, and exclude from the solution
 			if !s.g.Value(m) {
+				logrus.Infof("--- excluding the %v (%v) variable: %v", m, s.litMap.VariableOf(m), s.g.Value(m))
 				excluded = append(excluded, m.Not())
 				continue
+			} else {
+				logrus.Infof("--- including the %v (%v) variable: %v", m, s.litMap.VariableOf(m), s.g.Value(m))
 			}
 			extras = append(extras, m)
 		}
