@@ -91,13 +91,14 @@ func (r *ResolutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, err
 	}
 	if len(variables) == 0 {
+		internalErr := fmt.Errorf("Failed to generate any internal solver.Variables")
 		meta.SetStatusCondition(&res.Status.Conditions, metav1.Condition{
 			Type:    "Resolved",
 			Status:  metav1.ConditionFalse,
 			Reason:  "ConstraintEvaluatorFailed",
-			Message: "Failed to generate any internal solver.Variables",
+			Message: internalErr.Error(),
 		})
-		return ctrl.Result{}, nil
+		return ctrl.Result{}, internalErr
 	}
 
 	s, err := solver.New(solver.WithInput(variables))

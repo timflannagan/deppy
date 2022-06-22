@@ -2,10 +2,13 @@ package sourcer
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
 	operatorsv1alpha1 "github.com/operator-framework/api/pkg/operators/v1alpha1"
+	"github.com/operator-framework/deppy/api/v1alpha1"
+	registryproperty "github.com/operator-framework/operator-registry/alpha/property"
 	"github.com/operator-framework/operator-registry/pkg/api"
 	registryClient "github.com/operator-framework/operator-registry/pkg/client"
 	"github.com/sirupsen/logrus"
@@ -133,9 +136,39 @@ func (s sources) GetCandidates(ctx context.Context, filters ...FilterFn) (Bundle
 			errors = append(errors, fmt.Errorf("failed to list bundles from the %s/%s catalog: %w", cs.GetName(), cs.GetNamespace(), err))
 			continue
 		}
+		// TODO: move this to it's own Bundle constructor method
 		for b := it.Next(); b != nil; b = it.Next() {
-			if !newWrapper(b).Filter(filters...) {
-				continue
+			// TODO: do we need any client-side filtering here?
+			// TODO: figure out a better implementation for projecting property types vs. hardcoding known property types
+			properties := []v1alpha1.Property{}
+			for _, property := range b.GetProperties() {
+				value := map[string]string{}
+
+				switch property.Type {
+				case registryproperty.TypePackage:
+					var p registryproperty.Package
+					if err := json.Unmarshal(json.RawMessage(property.Value), &p); err != nil {
+						return nil, fmt.Errorf("failed to parse the %s/%v bundle property: %w", property.Type, property.Value, err)
+					}
+					value = map[string]string{
+						"package": p.PackageName,
+						"version": p.Version,
+					}
+				case registryproperty.TypeGVK:
+					var v registryproperty.GVK
+					if err := json.Unmarshal(json.RawMessage(property.Value), &v); err != nil {
+						return nil, fmt.Errorf("failed to parse the %s/%v bundle property: %w", property.Type, property.Value, err)
+					}
+					value = map[string]string{
+						"group":   v.Group,
+						"kind":    v.Kind,
+						"version": v.Version,
+					}
+				default:
+					// avoid handling unknown property types
+					continue
+				}
+				properties = append(properties, v1alpha1.Property{Type: property.Type, Value: value})
 			}
 			candidates = append(candidates, Bundle{
 				Name:        b.GetCsvName(),
@@ -145,6 +178,8 @@ func (s sources) GetCandidates(ctx context.Context, filters ...FilterFn) (Bundle
 				Image:       b.GetBundlePath(),
 				Skips:       b.GetSkips(),
 				Replaces:    b.GetReplaces(),
+				Properties:  properties,
+				SourceName:  cs.GetName(),
 			})
 		}
 	}

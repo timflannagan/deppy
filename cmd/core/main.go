@@ -40,9 +40,9 @@ func run(ctx context.Context) error {
 		filters []sourcer.FilterFn
 	)
 	for _, name := range packageSet {
-		if err := applyConstraintInput(ctx, c, name); err != nil {
-			return fmt.Errorf("failed to generate a constraint input for the %s package: %v", name, err)
-		}
+		// if err := applyConstraintInput(ctx, c, name); err != nil {
+		// 	return fmt.Errorf("failed to generate a constraint input for the %s package: %v", name, err)
+		// }
 		filters = append(filters, sourcer.WithPackageName(name))
 	}
 
@@ -62,35 +62,35 @@ func run(ctx context.Context) error {
 	return nil
 }
 
-func generateInputPackageName(packageName string) string {
-	return fmt.Sprintf("po-%s", packageName)
-}
+// func generateInputPackageName(packageName string) string {
+// 	return fmt.Sprintf("po-%s", packageName)
+// }
 
 func generateInputCatalogName(packageName string) string {
 	return fmt.Sprintf("catalog-%s", packageName)
 }
 
-func applyConstraintInput(ctx context.Context, c client.Client, packageName string) error {
-	candidateInput := &v1alpha1.Input{}
-	candidateInput.SetName(generateInputPackageName(packageName))
+// func applyConstraintInput(ctx context.Context, c client.Client, packageName string) error {
+// 	candidateInput := &v1alpha1.Input{}
+// 	candidateInput.SetName(generateInputPackageName(packageName))
 
-	// TODO: add a controller owner reference
-	_, err := controllerutil.CreateOrUpdate(ctx, c, candidateInput, func() error {
-		candidateInput.Spec = v1alpha1.InputSpec{
-			InputClassName: "core",
-			Constraints: []v1alpha1.Constraint{
-				{
-					Type: "olm.RequirePackage",
-					Value: map[string]string{
-						"package": packageName,
-					},
-				},
-			},
-		}
-		return nil
-	})
-	return err
-}
+// 	// TODO: add a controller owner reference
+// 	_, err := controllerutil.CreateOrUpdate(ctx, c, candidateInput, func() error {
+// 		candidateInput.Spec = v1alpha1.InputSpec{
+// 			InputClassName: "core",
+// 			Constraints: []v1alpha1.Constraint{
+// 				{
+// 					Type: "olm.RequirePackage",
+// 					Value: map[string]string{
+// 						"package": packageName,
+// 					},
+// 				},
+// 			},
+// 		}
+// 		return nil
+// 	})
+// 	return err
+// }
 
 func applyCandidateInput(ctx context.Context, c client.Client, b sourcer.Bundle) error {
 	candidateInput := &v1alpha1.Input{}
