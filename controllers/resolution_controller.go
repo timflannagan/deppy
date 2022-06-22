@@ -19,11 +19,11 @@ package controllers
 import (
 	"context"
 	"fmt"
-	"sort"
 
 	"github.com/blang/semver/v4"
 	"github.com/operator-framework/deppy/api/v1alpha1"
 	"github.com/operator-framework/deppy/internal/solver"
+	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -52,6 +52,8 @@ type ResolutionReconciler struct {
 // - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.11.2/pkg/reconcile
 func (r *ResolutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.Result, error) {
 	l := log.FromContext(ctx)
+	l.Info("reconciling request", "request", req.NamespacedName)
+	defer l.Info("finished reconciling request")
 
 	res := &v1alpha1.Resolution{}
 	if err := r.Get(ctx, req.NamespacedName, res); err != nil {
@@ -80,6 +82,7 @@ func (r *ResolutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
+	l.Info("evaluating constraint definitions")
 	variables, err := r.EvaluateConstraints(res, inputs.Items)
 	if err != nil {
 		meta.SetStatusCondition(&res.Status.Conditions, metav1.Condition{
@@ -98,9 +101,14 @@ func (r *ResolutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 			Reason:  "ConstraintEvaluatorFailed",
 			Message: internalErr.Error(),
 		})
-		return ctrl.Result{}, internalErr
+		return ctrl.Result{}, nil
 	}
 
+	for _, variable := range variables {
+		logrus.Infof("variable: %v", variable)
+	}
+
+	l.Info("performing resolution")
 	s, err := solver.New(solver.WithInput(variables))
 	if err != nil {
 		meta.SetStatusCondition(&res.Status.Conditions, metav1.Condition{
@@ -128,9 +136,7 @@ func (r *ResolutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		Message: "Successfully resolved runtime input resources",
 	})
 
-	sort.SliceStable(installed, func(i, j int) bool {
-		return installed[i].Identifier() < installed[j].Identifier()
-	})
+	l.Info("finished performing resolution", "length of installed IDs", len(installed))
 
 	res.Status.IDs = []string{}
 	for _, install := range installed {
@@ -140,11 +146,55 @@ func (r *ResolutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	return ctrl.Result{}, nil
 }
 
-func (r *ResolutionReconciler) EvaluateConstraints(res *v1alpha1.Resolution, inputs []v1alpha1.Input) ([]solver.Variable, error) {
-	var (
-		inputVars []solver.Variable
-	)
-	// Question: are we implicitly chaining together "AND" constraints here?
+func (r *ResolutionReconciler) EvaluateConstraints(res *v1alpha1.Resolution, items []v1alpha1.Input) ([]solver.Variable, error) {
+	variables := make([]solver.Variable, 0)
+
+	inputs, err := r.calculateInputVariables(items)
+	if err != nil {
+		return nil, err
+	}
+	for _, input := range inputs {
+		variables = append(variables, input)
+	}
+
+	constraints, err := r.calculateConstraints(res, inputs, items)
+	if err != nil {
+		return nil, err
+	}
+	for _, constraint := range constraints {
+		variables = append(variables, constraint)
+	}
+
+	return variables, nil
+}
+
+func (r *ResolutionReconciler) calculateInputVariables(
+	items []v1alpha1.Input,
+) (map[solver.Identifier]solver.Variable, error) {
+	inputs := make(map[solver.Identifier]solver.Variable)
+
+	for _, input := range items {
+		id := solver.IdentifierFromString(input.GetName())
+		if variable, ok := inputs[id]; ok {
+			inputs[variable.Identifier()] = variable
+			continue
+		}
+		inputs[id] = solver.GenericVariable{
+			ID: id,
+		}
+	}
+	return inputs, nil
+}
+
+func (r *ResolutionReconciler) calculateConstraints(
+	res *v1alpha1.Resolution,
+	visited map[solver.Identifier]solver.Variable,
+	items []v1alpha1.Input,
+) (map[solver.Identifier]solver.Variable, error) {
+	inputs := make(map[solver.Identifier]solver.Variable)
+
+	// for each constraint: create a solver.Variable and iterate over the set of properties
+	// to determine which constraint rules need to be defined here.
 	for _, constraint := range res.Spec.Constraints {
 		// TODO: avoid hardcoding this logic
 		if constraint.Type != "olm.RequirePackage" {
@@ -154,92 +204,41 @@ func (r *ResolutionReconciler) EvaluateConstraints(res *v1alpha1.Resolution, inp
 		if !ok {
 			return nil, fmt.Errorf("invalid key for olm.packageVersion constraint type: missing package")
 		}
-		// for each input: generate a solver.Variable even if it doesn't match any of the properties we're searching for right now
-		for _, input := range inputs {
-			variable := solver.GenericVariable{
-				ID: solver.IdentifierFromString(input.GetName()),
-			}
-			dependencies := []solver.Identifier{}
-			for _, property := range input.Spec.Properties {
-				if property.Type != "olm.packageVersion" {
-					continue
-				}
-				ref, ok := property.Value["package"]
-				if !ok {
-					return nil, fmt.Errorf("invalid key for olm.packageVersion property: missing package key value")
-				}
-				if packageRef != ref {
-					continue
-				}
-				dependencies = append(dependencies, solver.IdentifierFromString(input.GetName()))
-			}
-			inputVars = append(inputVars, variable)
-		}
-	}
+		id := solver.IdentifierFromString(fmt.Sprintf("res-%s-package-%s", res.GetName(), packageRef))
 
-	return nil, nil
+		variable := solver.GenericVariable{
+			ID:    id,
+			Rules: []solver.Constraint{solver.Mandatory()},
+		}
+		inputDependencies := []solver.Identifier{}
+
+		for _, input := range items {
+			if len(input.Spec.Properties) == 0 {
+				continue
+			}
+			if propertyExists("olm.package", "package", packageRef, input.Spec.Properties) {
+				inputDependencies = append(inputDependencies, solver.IdentifierFromString(input.GetName()))
+			}
+		}
+		if len(inputDependencies) != 0 {
+			variable.Rules = append(variable.Rules, solver.Dependency(inputDependencies...))
+		}
+		inputs[variable.ID] = variable
+	}
+	return inputs, nil
 }
 
-// func (r *ResolutionReconciler) CalculateInputVariables(res v1alpha1.Resolution, inputs []v1alpha1.Input) ([]solver.Variable, error) {
-// 	// TODO: account for existing resources as well
-// 	variables := make([]solver.Variable, 0)
-// 	for _, input := range inputs {
-// 		variable, err := r.calculateInputVariable(input, inputs)
-// 		if err != nil {
-// 			return nil, err
-// 		}
-// 		if variable == nil {
-// 			return nil, fmt.Errorf("invalid variable returned")
-// 		}
-// 		variables = append(variables, variable)
-// 	}
-// 	return variables, nil
-// }
-
-func (r *ResolutionReconciler) evaluateResolutionConstraints(input v1alpha1.Input, inputs []v1alpha1.Input) (solver.Variable, error) {
-	variable := solver.GenericVariable{
-		ID: solver.IdentifierFromString(input.GetName()),
-	}
-	if len(input.Spec.Constraints) == 0 {
-		return variable, nil
-	}
-	if len(input.Spec.Constraints) > 1 {
-		return nil, fmt.Errorf("unsupported: cannot specify more than one constraint")
-	}
-	// TODO: support multiple constraint definitions
-	// TODO: avoid hardcoding the supported constraint definition
-	constraint := input.Spec.Constraints[0]
-	if constraint.Type != "olm.RequirePackage" {
-		return nil, fmt.Errorf("unsupported constraint type %q", constraint.Type)
-	}
-	ref, err := newPackageRef(constraint)
-	if err != nil {
-		return nil, err
-	}
-	dependencies := []solver.Identifier{}
-
-	// Build up a set of dependent Inputs that match the requisite label
-	// TODO: avoid hardcoding the property type.
-	for _, item := range inputs {
-		for _, property := range item.Spec.Properties {
-			if property.Type != "olm.packageVersion" {
-				continue
-			}
-			packageRef := property.Value["package"]
-			if packageRef != ref.Package {
-				continue
-			}
-			// version := property.Value["version"]
-			// if !inSemverRange(ref.Range, version) {
-			// 	logrus.Infof("version %v not in version range %v", version, ref.Range)
-			// 	continue
-			// }
-			// logrus.Infof("found version %v in version range %v", version, ref.Range)
-			dependencies = append(dependencies, solver.IdentifierFromString(item.GetName()))
+func propertyExists(tpe, key, value string, properties []v1alpha1.Property) bool {
+	for _, property := range properties {
+		if property.Type != tpe {
+			continue
 		}
+		if property.Value[key] != value {
+			continue
+		}
+		return true
 	}
-	variable.Rules = []solver.Constraint{solver.Mandatory(), solver.Dependency(dependencies...)}
-	return variable, nil
+	return false
 }
 
 func handleConstraint(constraint v1alpha1.Constraint) (*PackageRef, error) {
@@ -287,12 +286,12 @@ func (r *ResolutionReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.Resolution{}).
 		Watches(&source.Kind{Type: &v1alpha1.Input{}}, handler.EnqueueRequestsFromMapFunc(func(o client.Object) []reconcile.Request {
-			inputs := &v1alpha1.InputList{}
-			if err := r.List(context.Background(), inputs); err != nil {
+			resolutions := &v1alpha1.ResolutionList{}
+			if err := r.List(context.Background(), resolutions); err != nil {
 				return nil
 			}
-			res := make([]reconcile.Request, 0, len(inputs.Items))
-			for _, input := range inputs.Items {
+			res := make([]reconcile.Request, 0, len(resolutions.Items))
+			for _, input := range resolutions.Items {
 				res = append(res, reconcile.Request{NamespacedName: client.ObjectKeyFromObject(&input)})
 			}
 			return res
