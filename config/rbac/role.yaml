@@ -20,20 +20,6 @@ rules:
 - apiGroups:
   - core.deppy.io
   resources:
-  - inputs/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - core.deppy.io
-  resources:
-  - inputs/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - core.deppy.io
-  resources:
   - platformoperators
   verbs:
   - create
@@ -83,3 +69,11 @@ rules:
   - get
   - patch
   - update
+- apiGroups:
+  - operators.coreos.com
+  resources:
+  - catalogsources
+  verbs:
+  - get
+  - list
+  - watch

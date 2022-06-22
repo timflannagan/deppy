@@ -36,9 +36,8 @@ type CatalogSourceAdapter struct {
 	Scheme *runtime.Scheme
 }
 
-//+kubebuilder:rbac:groups=core.deppy.io,resources=resolutions,verbs=get;list;watch;create;update;patch;delete
-//+kubebuilder:rbac:groups=core.deppy.io,resources=resolutions/status,verbs=get;update;patch
-//+kubebuilder:rbac:groups=core.deppy.io,resources=resolutions/finalizers,verbs=update
+//+kubebuilder:rbac:groups=operators.coreos.com,resources=catalogsources,verbs=get;list;watch
+//+kubebuilder:rbac:groups=core.deppy.io,resources=inputs,verbs=get;list;watch;create;update;patch;delete
 
 // Reconcile is part of the main kubernetes reconciliation loop which aims to
 // move the current state of the cluster closer to the desired state.
@@ -98,6 +97,7 @@ func (r *CatalogSourceAdapter) applyCandidateInput(ctx context.Context, b source
 // SetupWithManager sets up the controller with the Manager.
 func (r *CatalogSourceAdapter) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
+		// TODO: watch the Input resource in case it gets deleted?
 		For(&operatorsv1alpha1.CatalogSource{}).
 		Complete(r)
 }
