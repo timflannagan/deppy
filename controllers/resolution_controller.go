@@ -19,11 +19,11 @@ package controllers
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/blang/semver/v4"
 	"github.com/operator-framework/deppy/api/v1alpha1"
 	"github.com/operator-framework/deppy/internal/solver"
-	"github.com/sirupsen/logrus"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -104,10 +104,6 @@ func (r *ResolutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 		return ctrl.Result{}, nil
 	}
 
-	for _, variable := range variables {
-		logrus.Infof("variable: %v", variable)
-	}
-
 	l.Info("performing resolution")
 	s, err := solver.New(solver.WithInput(variables))
 	if err != nil {
@@ -137,6 +133,9 @@ func (r *ResolutionReconciler) Reconcile(ctx context.Context, req ctrl.Request) 
 	})
 
 	l.Info("finished performing resolution", "length of installed IDs", len(installed))
+	sort.SliceStable(installed, func(i, j int) bool {
+		return installed[i].Identifier() < installed[j].Identifier()
+	})
 
 	res.Status.IDs = []string{}
 	for _, install := range installed {
@@ -191,16 +190,21 @@ func (r *ResolutionReconciler) calculateConstraints(
 	visited map[solver.Identifier]solver.Variable,
 	items []v1alpha1.Input,
 ) (map[solver.Identifier]solver.Variable, error) {
+	const (
+		knownConstrainPackageType = "olm.RequirePackage"
+		knownPropertyPackageType  = "olm.package"
+		knownPackageKey           = "package"
+	)
 	inputs := make(map[solver.Identifier]solver.Variable)
 
 	// for each constraint: create a solver.Variable and iterate over the set of properties
 	// to determine which constraint rules need to be defined here.
 	for _, constraint := range res.Spec.Constraints {
 		// TODO: avoid hardcoding this logic
-		if constraint.Type != "olm.RequirePackage" {
+		if constraint.Type != knownConstrainPackageType {
 			return nil, fmt.Errorf("unsupported constraint type %q", constraint.Type)
 		}
-		packageRef, ok := constraint.Value["package"]
+		packageRef, ok := constraint.Value[knownPackageKey]
 		if !ok {
 			return nil, fmt.Errorf("invalid key for olm.packageVersion constraint type: missing package")
 		}
@@ -216,12 +220,17 @@ func (r *ResolutionReconciler) calculateConstraints(
 			if len(input.Spec.Properties) == 0 {
 				continue
 			}
-			if propertyExists("olm.package", "package", packageRef, input.Spec.Properties) {
+			if propertyExists(knownPropertyPackageType, knownPackageKey, packageRef, input.Spec.Properties) {
 				inputDependencies = append(inputDependencies, solver.IdentifierFromString(input.GetName()))
 			}
 		}
-		if len(inputDependencies) != 0 {
-			variable.Rules = append(variable.Rules, solver.Dependency(inputDependencies...))
+		variable.Rules = append(variable.Rules, solver.Dependency(inputDependencies...))
+
+		if len(inputDependencies) == 0 {
+			variable.Rules = []solver.Constraint{
+				solver.Mandatory(),
+				solver.PrettyConstraint(solver.Prohibited(), fmt.Sprintf(`failed to find an input that matches the desired "%s" %s property`, packageRef, knownPropertyPackageType)),
+			}
 		}
 		inputs[variable.ID] = variable
 	}

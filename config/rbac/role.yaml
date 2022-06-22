@@ -34,6 +34,32 @@ rules:
 - apiGroups:
   - core.deppy.io
   resources:
+  - platformoperators
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - core.deppy.io
+  resources:
+  - platformoperators/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - core.deppy.io
+  resources:
+  - platformoperators/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - core.deppy.io
+  resources:
   - resolutions
   verbs:
   - create

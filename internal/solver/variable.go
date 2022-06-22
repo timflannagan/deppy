@@ -58,3 +58,19 @@ func NewVariable(id Identifier, constraints ...Constraint) Variable {
 		Rules: constraints,
 	}
 }
+
+func PrettyConstraint(c Constraint, msg string) Constraint {
+	return prettyConstraint{
+		Constraint: c,
+		msg:        msg,
+	}
+}
+
+type prettyConstraint struct {
+	Constraint
+	msg string
+}
+
+func (pc prettyConstraint) String(_ Identifier) string {
+	return pc.msg
+}
