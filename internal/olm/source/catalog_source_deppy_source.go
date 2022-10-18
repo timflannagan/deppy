@@ -154,6 +154,10 @@ func (c *CatalogSourceDeppySource) bundleToDeppyEntity(apiBundle *api.Bundle, de
 	properties["olm.channel"] = apiBundle.ChannelName
 	properties["olm.defaultChannel"] = defaultChannel
 
+	if apiBundle.BundlePath != "" {
+		properties["olm.bundlePath"] = apiBundle.BundlePath
+	}
+
 	if apiBundle.Replaces != "" {
 		properties["olm.replaces"] = apiBundle.Replaces
 	}
