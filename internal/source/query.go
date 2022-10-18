@@ -32,7 +32,7 @@ type GroupByFunction func(e1 *Entity) []string
 type GroupByResult map[string]SearchResult
 
 func (g GroupByResult) Sort(fn SortFunction) GroupByResult {
-	for key, _ := range g {
+	for key := range g {
 		sort.SliceStable(g[key], func(i, j int) bool {
 			return fn(&g[key][i], &g[key][j])
 		})
