@@ -3,8 +3,8 @@ package constraints
 import (
 	"context"
 
-	"github.com/operator-framework/deppy/pkg/entitysource"
-	"github.com/operator-framework/deppy/pkg/sat"
+	"github.com/timflannagan/deppy/pkg/entitysource"
+	"github.com/timflannagan/deppy/pkg/sat"
 )
 
 // ConstraintGenerator generates solver constraints given an entity querier interface

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/operator-framework/deppy/cmd/root"
+	"github.com/timflannagan/deppy/cmd/root"
 )
 
 func main() {

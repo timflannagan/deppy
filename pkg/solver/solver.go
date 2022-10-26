@@ -3,9 +3,9 @@ package solver
 import (
 	"context"
 
-	"github.com/operator-framework/deppy/pkg/constraints"
-	"github.com/operator-framework/deppy/pkg/entitysource"
-	"github.com/operator-framework/deppy/pkg/sat"
+	"github.com/timflannagan/deppy/pkg/constraints"
+	"github.com/timflannagan/deppy/pkg/entitysource"
+	"github.com/timflannagan/deppy/pkg/sat"
 )
 
 var _ Solver = &DeppySolver{}

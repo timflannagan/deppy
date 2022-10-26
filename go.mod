@@ -1,4 +1,4 @@
-module github.com/operator-framework/deppy
+module github.com/timflannagan/deppy
 
 go 1.19
 
